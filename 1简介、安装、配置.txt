@@ -1,0 +1,93 @@
+1、跨平台：windows MacOS 安卓 IOS等等
+可以用于桌面开发、移动开发、嵌入式应用
+
+2、KDE桌面系统，在linux上使用，很流行
+Jolla手机，采用MeeGo操作系统
+
+3、qt帮助的文档非常详尽，还有示例
+帮助中可以添加书签
+
+4、选项中的文本编辑器，可以用空格替换制表符
+
+5、#include<QLabel>     
+QLabel label1("Hello");
+label1.show();
+
+6、qt on android的配置
+JDK/JRE
+	JRE是Java runtime environment
+	JDK是开发的套件，安装过程中会安装JRE
+	并添加到系统环境变量path
+Android SDK
+	添加adb到path环境变量
+Android NDK
+apache Ant
+配置Qt Creator
+创建AVD（安卓模拟器）
+
+7、Hello Android（用qt开发安卓应用有个好处是可以在桌面版本来测试应用的逻辑）
+在项目界面进行配置
+	deployment部署策略：deploy local qt libraries to a temporary deirectory.（用qt开发很多应用，但在手机上只有一份库）
+部署过程：先编译C++成为一个so文件，拷贝很多模板文件，生成一个Java的android的项，再调用apache_ant，生成一个apk，安装运行
+adb devices命令可以看到已连接的设备
+
+qt程序结构
+//main.cpp
+	#include "widget.h"
+	#include <QApplication>
+
+	int main(int argc, char *argv[])
+	{
+		QApplication a(argc, argv);//每一个应用都有一个QApplication实例，是全局的，负责在操作系统做一些初始化，事件的接受、派遣。
+
+		Widget w;
+		w.show();
+
+		return a.exec();//exec()方法会开始application的事件循环（就是提取、传递鼠标、键盘这些事件）
+	}
+//Widgets.cpp
+	#include "widget.h"
+	#include <QVBoxLayout>//纵向布局管理器，继承自QBoxLayout，即QVBoxLayout->QBoxLayout
+	#include <QLabel>
+
+	Widget::Widget(QWidget *parent)
+		: QWidget(parent)
+	{
+		QVBoxLayout *layout=new QVBoxLayout();
+		QLabel *hello=new QLabel("Hello Android. I am Qt.");
+		layout->addWidget(hello);//把QLabel对象添加到布局管理器中
+		setLayout(layout);//把布局管理器设置给Widget，是this的方法
+	}
+
+	Widget::~Widget()
+	{}
+//布局管理器:用来管理一系列的控件，在页面大小发生变化的时候，这些控件会自动的重新布局
+	使用思路：先决定某个要用布局的Widget，新建一个layout，把控件加进去，setLayout一下，搞定。
+		这里是把有关layout的步骤放到了widget的构建函数中，如果所有的widget都用相同的布局的话是可以的。
+	layout中的常用方法：addWidget(),addLayout()//在里面再加一个layout,
+QLabel:用于显示文本或图片
+	QLabel->QFrame->QWidget
+	new QLabel("hello"),setText("hello"),setPixmap(QPixmap &object)（显示图片），setMovie(QMovie *object)（显示gif动画）
+
+//Qt库的部署策略（把依赖库部署到手机上）：三种必选一种
+	1、Bundle Qt libs in APK（打包到apk包中，大，差不多几十兆）
+	2、Use Ministro service to install Qt（用到的时候才临时到网络上下载，好处是同一个设备上有多个qt应用时，可以共享一份库）
+	3、Deploy local Qt libraries to temporary directory（适合开发阶段）
+
+8、Qt on Android配置详解
+AndroidManifest:一个清单，本是xml文件，qt提供了图形化的设置
+	Package name:安卓应用全局唯一的包名，可以改
+	Version code:更新的时候会用到
+	Version name:显示给用户看的
+	icon:低分辨率（大概36*36）、中、高
+	权限
+    sign：在安卓市场发布的时候，必须要有一个签名，且新旧版本签名必须一致
+
+9、关于内存释放：
+    Qt内存自动释放有两个前提条件：
+    1. 必须是QObject的派生类
+    2. 必须指定了parent对象
+    http://www.cnblogs.com/foxhengxing/archive/2010/12/24/1916355.html
+    所以：
+    使用指针与new的时候，析构函数要delete掉最上面的父对象。
+    使用QObject myObject直接构造对象的时候，要注意在出作用域的时候 先创建后销毁 的规则，小心子对象重复析构。

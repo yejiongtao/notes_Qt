@@ -1,0 +1,248 @@
+1、单选按钮 QRadioButton
+	有一个toggled()信号，表示被选中。可以自定义槽onToggled()。
+
+复选按钮 QCheckBox
+	有一个stateChanged(int)信号，可以自定义onStateChanged(int state)槽。
+
+分组框（把几个控件弄到一起） QGroupBox
+	一个分组框中一般还有布局管理器来管理里面的控件
+
+void Widget::onToggled()
+{
+    QRadioButton *btn=qobject_cast<QRadioButton *>(sender());		//注意这里的用法！
+    StateLabel->setText(btn->text());
+    StateLabel->adjustSize();
+}
+
+代码：
+//Widget.h
+		#ifndef WIDGET_H
+		#define WIDGET_H
+
+		#include <QWidget>
+		#include <QLabel>
+		#include <QGroupBox>
+		#include <QRadioButton>
+		#include <QCheckBox>
+
+		class Widget : public QWidget
+		{
+			Q_OBJECT
+
+		public:
+			Widget(QWidget *parent = 0);
+			~Widget();
+
+		protected slots:
+			void onToggled();
+			void onStateChanged(int state);
+
+		protected:
+			QLabel *StateLabel;
+		};
+
+		#endif // WIDGET_H
+//widget.cpp
+		#include "widget.h"
+		#include <QVBoxLayout>
+		#include <QString>
+
+		Widget::Widget(QWidget *parent)
+			: QWidget(parent)
+		{
+			QVBoxLayout *MainLayout=new QVBoxLayout(this);
+
+			QGroupBox *GroupBox=new QGroupBox(this);
+			MainLayout->addWidget(GroupBox);
+			GroupBox->setTitle("Select your favorite programming language:");//标题~~~
+
+			QVBoxLayout *GroupLayout=new QVBoxLayout(GroupBox);//注意这里！！这个布局管理器是属于GroupBox的
+			QRadioButton *Language=new QRadioButton("C++");
+			GroupLayout->addWidget(Language);
+			connect(Language,SIGNAL(toggled(bool)),this,SLOT(onToggled()));
+
+			Language=new QRadioButton("Java");          //这指针就重复用就行了，免得太多的名字
+			GroupLayout->addWidget(Language);
+			connect(Language,SIGNAL(toggled(bool)),this,SLOT(onToggled()));
+
+			Language=new QRadioButton("Objective-C");
+			GroupLayout->addWidget(Language);
+			connect(Language,SIGNAL(toggled(bool)),this,SLOT(onToggled()));
+
+			GroupBox=new QGroupBox(this);
+			MainLayout->addWidget(GroupBox);
+			GroupBox->setTitle("Select your favorite operating system:");
+			GroupBox->setCheckable(true);           //这里！整个groupBox将可以被选中。
+
+			GroupLayout=new QVBoxLayout(GroupBox);
+			QCheckBox *OS=new QCheckBox("IOS");
+			GroupLayout->addWidget(OS);
+			connect(OS,SIGNAL(stateChanged(int)),this,SLOT(onStateChanged(int)));
+
+			OS=new QCheckBox("Android");
+			GroupLayout->addWidget(OS);
+			connect(OS,SIGNAL(stateChanged(int)),this,SLOT(onStateChanged(int)));
+
+			OS=new QCheckBox("Windows Phone");
+			GroupLayout->addWidget(OS);
+			connect(OS,SIGNAL(stateChanged(int)),this,SLOT(onStateChanged(int)));
+
+			StateLabel=new QLabel();
+			MainLayout->addWidget(StateLabel);
+			MainLayout->addStretch(1);          //拉伸窗口时，上面的会不动，下面的空白区域会拉伸。因为是在最下面addStretch
+		}
+
+		Widget::~Widget()
+		{
+
+		}
+
+		void Widget::onToggled()
+		{
+			QRadioButton *btn=qobject_cast<QRadioButton *>(sender());   //注意这里的用法！
+			StateLabel->setText(btn->text());
+			StateLabel->adjustSize();
+		}
+
+		void Widget::onStateChanged(int state)
+		{
+			QCheckBox *btn=qobject_cast<QCheckBox*>(sender());
+			QString Stats=QString("%1 - %2").arg(btn->text()).arg(state); //这里用到checkBox的状态，就是传进来的参数，0为未选中，2为选中
+			StateLabel->setText(Stats);
+			StateLabel->adjustSize();
+		}
+
+2、行编辑 QLineEdit
+块编辑 QTextEdit
+选项卡 QTabWidget （选项卡可以是最底层的窗口、包含widget，也应该可以是某个widget的一部分）
+
+//main.cpp
+		#include "widget.h"
+		#include <QApplication>
+		#include <QTabWidget>
+		#include <QTextEdit>
+
+		int main(int argc, char *argv[])
+		{
+			QApplication a(argc, argv);
+
+			QTabWidget *TabWidget=new QTabWidget;
+			Widget *w=new Widget;
+			QTextEdit *TextEdit=new QTextEdit;
+
+			TabWidget->addTab(w,"edit");
+			TabWidget->addTab(TextEdit,"show");
+			QObject::connect(w,SIGNAL(Message(QString)),TextEdit,SLOT(append(QString)));    //记住！
+
+			TabWidget->show();
+
+			return a.exec();
+		}
+//Widget.h
+		#ifndef WIDGET_H
+		#define WIDGET_H
+
+		#include <QWidget>
+		#include <QRadioButton>
+		#include <QLineEdit>
+		#include <QCheckBox>
+
+		class Widget : public QWidget
+		{
+			Q_OBJECT
+
+		public:
+			Widget(QWidget *parent = 0);
+			~Widget();
+
+		signals:
+			void Message(const QString &msg);
+
+		protected slots:
+			void onColorToggled();
+			void onSubmit();
+
+		protected:                  //都是需要保留的信息
+			QRadioButton *Color;		//指向那个当前选中的单选按钮
+			QLineEdit *LineEdit;
+			QCheckBox *BoldOption;
+		};
+
+		#endif // WIDGET_H
+//Widget.cpp
+		#include "widget.h"
+		#include <QVBoxLayout>
+		#include <QGroupBox>
+		#include <QPushButton>
+		#include <QString>
+
+		Widget::Widget(QWidget *parent)
+			: QWidget(parent)
+		{
+			QVBoxLayout *layout=new QVBoxLayout(this);
+			QGroupBox *GroupBox=new QGroupBox;
+			layout->addWidget(GroupBox);
+			BoldOption=new QCheckBox("BOLD");
+			layout->addWidget(BoldOption);
+			LineEdit=new QLineEdit;
+			layout->addWidget(LineEdit);
+			QPushButton *SubmitButton=new QPushButton("Submit");
+			connect(SubmitButton,SIGNAL(clicked()),this,SLOT(onSubmit()));
+			layout->addWidget(SubmitButton);
+			layout->addStretch(1);
+
+			QVBoxLayout *ColorLayout=new QVBoxLayout(GroupBox);
+			GroupBox->setTitle("Select color:");
+			QRadioButton *ColorChoice=new QRadioButton("Red");
+			ColorChoice->setStyleSheet("*{color:red}");         //高级！设置文本字体
+			ColorChoice->setChecked(true);                      //默认选中
+			Color=ColorChoice;                                  //默认是这个，有个默认值才好，不然用户没选就提交会导致崩溃
+			ColorLayout->addWidget(ColorChoice);
+			connect(ColorChoice,SIGNAL(toggled(bool)),this,SLOT(onColorToggled()));
+
+			ColorChoice=new QRadioButton("Blue");
+			ColorChoice->setStyleSheet("*{color:blue}");
+			ColorLayout->addWidget(ColorChoice);
+			connect(ColorChoice,SIGNAL(toggled(bool)),this,SLOT(onColorToggled()));
+
+			ColorChoice=new QRadioButton("Black");
+			ColorChoice->setStyleSheet("*{color:black}");
+			ColorLayout->addWidget(ColorChoice);
+			connect(ColorChoice,SIGNAL(toggled(bool)),this,SLOT(onColorToggled()));
+
+			ColorChoice=new QRadioButton("Green");
+			ColorChoice->setStyleSheet("*{color:green}");
+			ColorLayout->addWidget(ColorChoice);
+			connect(ColorChoice,SIGNAL(toggled(bool)),this,SLOT(onColorToggled()));
+		}
+
+		Widget::~Widget()
+		{
+
+		}
+
+		void Widget::onColorToggled()
+		{
+			Color=qobject_cast<QRadioButton*>(sender());
+		}
+
+		void Widget::onSubmit()
+		{
+			QString str;
+			if(BoldOption->isChecked()) //如果被选中
+			{
+				str=QString("<font color=\"%1\"><b>%2<\b><\font>").arg(Color->text()).arg(LineEdit->text());//注意这里使用的html
+			}
+			else
+			{
+				str=QString("<font color=\"%1\">%2<\font>").arg(Color->text()).arg(LineEdit->text());
+			}
+			emit Message(str);
+			LineEdit->clear();      //记得
+		}
+
+
+
+
+
+

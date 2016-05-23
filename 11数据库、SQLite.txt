@@ -1,0 +1,172 @@
+1、QtSql模块提供了与平台以及数据库种类无关的访问SQL数据库的接口，这个接口由利用Qt的模型视图结构将数据库与用户界面集成的一套类来支持。
+    也就是说，不同类型的数据库只是一开始添加驱动的时候不一样，具体的操作都是一样的！
+    具体的驱动类型：http://blog.sina.com.cn/s/blog_a6fb6cc90101gx30.html
+
+2、SQLite 嵌入式数据库
+    开源，官网上有源代码。数据库结构简单，系统源代码也不是很多，也适合想研究数据库系统开发的专业人士。
+    零配置 – 无需安装和管理配置
+    储存在单一磁盘文件中的一个完整的数据库
+    支持多种开发语言,C、PHP、Perl、Java、C#、Python
+
+    1）数据无类型，无论这列声明什么类型（integer primary key除外），都可以在其中插入任何类型的数据：create table myTable(a,b,c)这样不做类型声明的语句是允许的。
+    2）PHP、Java、C/C++ 中SQLite的操作：http://blog.sina.com.cn/s/blog_a6fb6cc90101ffmq.html
+        包括需要下什么库文件上面都有
+
+3、Qt中对数据库的操作（驱动在装Qt的时候就装好了）
+    1）#include <QtSql>
+        QT += sql
+    QSqlDatabase类实现了数据库连接的操作
+    QSqlQuery类执行SQL语句
+    QSqlRecord类封装数据库所有记录
+
+    乱入：prepare的好处：可以使用待绑定参数；prepare在数据库进行编译；
+    
+    2）
+//添加数据库驱动、设置数据库名称、数据库登录用户名、密码
+QSqlDatabase database = QSqlDatabase::addDatabase("QSQLITE"); 
+database.setDatabaseName("database.db");
+database.setUserName("root");  
+database.setPassword("123456");
+
+//打开数据库
+if(!database.open())
+{  
+    qDebug()<<database.lastError();
+    qFatal("failed to connect.") ;
+}
+else
+{
+    //QSqlQuery类提供执行和操作的SQL语句的方法。
+    //可以用来执行DML（数据操作语言）语句，如SELECT、INSERT、UPDATE、DELETE， 
+    //以及DDL（数据定义语言）语句，例如CREATE TABLE。
+    //也可以用来执行那些不是标准的SQL的数据库特定的命令。
+
+    QSqlQuery sql_query; 
+
+    QString create_sql = "create table student (id int primary key, name varchar(30), age int)";
+    QString select_max_sql = "select max(id) from student";
+    QString insert_sql = "insert into student values (?, ?, ?)";    //待绑定参数
+    QString update_sql = "update student set name = :name where id = :id";
+    QString select_sql = "select id, name from student";
+    QString select_all_sql = "select * from student";
+    QString delete_sql = "delete from student where id = ?";
+    QString clear_sql = "delete from student";
+
+    sql_query.prepare(create_sql);  //注意
+    if(!sql_query.exec())           //bool exec()执行之前prepare好的语句，并更新lastError
+    {
+        qDebug()<<sql_query.lastError();
+    }
+    else
+    {
+        qDebug()<<"table created!";
+    }
+
+//查询最大id
+    int max_id = 0;
+    sql_query.prepare(select_max_sql);
+    if(!sql_query.exec())
+    {
+        qDebug()<<sql_query.lastError();
+    }
+    else
+    {
+        while(sql_query.next())             //bool next()取回结果，一次取一个
+        {
+            max_id = sql_query.value(0).toInt();    //取回当前结果的第一个值（不推荐select *，顺序就不清楚了）
+                                                    //如果index不对或者当前结果不存在，就会返回一个invalid variant，所以之前要用next取回判断
+            qDebug()<<QString("max id:%1").arg(max_id);
+        }
+    }
+
+//插入数据
+    sql_query.prepare(insert_sql);      //先prepare再绑定参数
+    sql_query.addBindValue(max_id+1);   //绑定值
+    sql_query.addBindValue("name");
+    sql_query.addBindValue(25);
+    if(!sql_query.exec())
+    {
+        qDebug()<<sql_query.lastError();
+    }
+    else
+    {
+        qDebug()<<"inserted!";
+    }
+
+//更新数据
+    sql_query.prepare(update_sql);
+    sql_query.bindValue(":name", "Qt");
+    sql_query.bindValue(":id", 1);
+    if(!sql_query.exec())
+    {
+        qDebug()<<sql_query.lastError();
+    }
+    else
+    {
+        qDebug()<<"updated!";
+    }
+
+//查询部分数据
+    if(!sql_query.exec(select_sql)) //为啥这里不用prepare？应该还是要的吧，也可以不用的。
+    {
+        qDebug()<<sql_query.lastError();
+    }
+    else
+    {
+        while(sql_query.next())
+        {
+            int id = sql_query.value("id").toInt();     //value的另外一个重载形式，直接用列名来获取
+            QString name = sql_query.value("name").toString();
+
+            qDebug()<<QString("id:%1    name:%2").arg(id).arg(name);    //注意这用法
+        }
+    }
+
+    //查询所有数据
+    sql_query.prepare(select_all_sql);
+    if(!sql_query.exec())
+    {
+        qDebug()<<sql_query.lastError();
+    }
+    else
+    {
+        while(sql_query.next())
+        {
+            int id = sql_query.value(0).toInt();
+            QString name = sql_query.value(1).toString();
+            int age = sql_query.value(2).toInt();
+
+            qDebug()<<QString("id:%1    name:%2    age:%3").arg(id).arg(name).arg(age);
+        }
+    }
+
+    //删除数据
+    sql_query.prepare(delete_sql);
+    sql_query.addBindValue(max_id);
+    if(!sql_query.exec())
+    {
+        qDebug()<<sql_query.lastError();
+    }
+    else
+    {
+        qDebug()<<"deleted!";
+    }
+
+    //清空表
+    sql_query.prepare(clear_sql);
+    if(!sql_query.exec())
+    {
+        qDebug()<<sql_query.lastError();
+    }
+    else
+    {
+        qDebug()<<"cleared";
+    }
+}
+
+//关闭数据库
+database.close();
+
+//删除数据库
+QFile::remove("database.db");
+

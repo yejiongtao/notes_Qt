@@ -1,0 +1,127 @@
+*****未解决问题：
+QTableWidget中加一个按钮，如果按下的时候表中没有被选中的单元格、或者选中的单元格是蓝色的，则可以成功更新currentRow和currentColumn；但如果此时表中选中的单元格是灰色的，就无法正常更新那两个信息，仍保留那个灰色的选中的单元格的位置。非常坑爹。
+
+当给table中的某个cell设置了可以拥有焦点、处理事件的widget之后，鼠标点击之类的事件可能被widget拿到，QTableWidget没机会处理，就不会发射currentCellChanged这个信号了。
+
+解决办法：保存一下按钮指针、位置信息即可。（稚嫩这样了）
+
+
+1、 QLineEdit edit;
+    edit.setEchoMode(QLineEdit::Password);
+
+2、 QTabWidget里面removeTab(), setTabEnabled()
+
+3、QTableWidget
+    QTableWidget中有信号cellChanged(int,int),itemChanged(QTableWidgetItem) 
+
+    用itemChanged信号不要用cellChanged  //因为当table中鱼龙混杂的时候，index并不是很好确定
+    removeRow(int)
+
+    我终于知道为什么了！！当table中既有widget又有item的时候，itemAt(0,0)是指最左上角的那个item，是不包括Widget的！！！
+
+    原来takeitem是把这个item删掉的意思，不是拿走，但没有delete
+
+    注意：itemAt如果该位置不是item的话会跳到别的位置，具体的排序并不清楚
+        而item(int,int)则无论如何都会在那个位置，如果不是item的话就会出错，由程序员自己把握
+
+    如果在某一个格中用setCellWidget加上一个按钮的话，点击这个按钮是不会改变currentCell的，也不会触发cellclicked()信号。（QLabel是会的）
+
+4、prepare()语句中，等号左边的？可能会出错
+
+5、more about QTableWidget:
+http://blog.csdn.net/xcy2011sky/article/details/6991073
+
+    1）QTableWidget是QTableView的子类，主要的区别是QTableView可以使用自定义的数据模型来显示内容(也就是先要通过setModel来绑定数据源)，而QTableWidget则只能使用标准的数据模型
+
+    2）将表格变为禁止编辑
+        tableWidget->setEditTriggers(QAbstractItemView::NoEditTriggers);//括号中可以用OR来设置多个参数
+                                                      //之所以能用 | ，是因为这些常量的值是2的整次幂。
+      设置表格为整行选择 
+        tableWidget->setSelectionBehavior(QAbstractItemView::SelectRows);
+            还有整列选中、单个单元格。（不能用OR，因为常量分别为0，1，2）
+
+      单个选中和多个选中的设置：
+        tableWidget->setSelectionMode(QAbstractItemView::ExtendedSelection);  //设置为可以选中多个目标
+            还有单个选中、不能选中
+
+      表格表头的显示与隐藏：
+        #include <QHeaderView>
+        tableWidget->verticalHeader()->setVisible(false);   //隐藏列表头  
+        tableWidget->horizontalHeader()->setVisible(false); //隐藏行表头  
+
+      对表头文字的字体、颜色进行设置
+        QTableWidgetItem *columnHeaderItem0 = tableWidget->horizontalHeaderItem(0); //获得水平方向表头的Item对象  
+        columnHeaderItem0->setFont(QFont("Helvetica")); //设置字体  
+        columnHeaderItem0->setBackgroundColor(QColor(0,60,10)); //设置单元格背景颜色  
+        columnHeaderItem0->setTextColor(QColor(200,111,30)); //设置文字颜色 
+            常见颜色也可以直接Qt::darkRed
+            QColor()默认以RGB模式生成颜色
+
+      单元格设置字体颜色和背景颜色 及字体字符
+        QTableWidgetItem *item = new QTableWidgetItem("Apple");  
+        item->setBackgroundColor(QColor(0,60,10));  
+        item->setTextColor(QColor(200,111,100));  
+        item->setFont(QFont("Helvetica"));  
+      
+      对所有单元格：
+        tableWidget->setFont(QFont("Helvetica"));
+
+      合并单元格：
+        tableWidget->setSpan(0,0,2,2);//意思是把(0,0)这个位置的单元格扩展成长宽是原来的两个单元格的长宽
+
+      设置单元格的大小：
+        tableWidget->setColumnWidth(3,200);  
+        tableWidget->setRowHeight(3,60); 
+      设为与内容相适应：
+        tableWidget->resizeColumnsToContents();  
+        tableWidget->resizeRowsToContents();  
+
+      设置是否显示格线：
+        tableWidget->setShowGrid(false);//默认是true
+
+6、QPushButton里面setCheckable(true)可以把按钮改成按一下就变色，再按一下变回来的那种。
+
+7、*******
+    关于信号与槽
+    一个信号连接多个槽的情况下，发射信号之后，调用槽的顺序是什么样的呢？网上有人说是以不确定的顺序，我亲测是以connect的先后顺序来的。
+    好吧这仅限于简单的情况，如果很复杂的很多信号乱连，顺序是无法预计的。
+    好吧网上都说是随机的、不确定的。
+
+8、QTest::qSleep(int ms);       //会根据系统不同调用对应的函数，很好。
+    QT += testlib
+    #include<QTest> //发现这个include如果加在main.cpp之外的其他cpp文件，会出错。加在.h文件没问题。
+
+9、槽的参数不能有缺省值
+
+    public slots：在这个区内声明的槽意味着任何对象都可将信号与之相连接。这对于组件编程非常有用，你可以创建彼此互不 了解的对象，将它们的信号与槽进行连接以便信息能够正确的传递。
+    protected slots：在这个区内声明的槽意味着当前类及其子类可以将信号与之相连接。这适用于那些槽，它们是类实现的一部分，但是其界面接口却面向外部。
+    private slots：在这个区内声明的槽意味着只有类自己可以将信号与之相连接。这适用于联系非常紧密的类。
+
+    槽也能够声明为虚函数。
+
+disconnect:
+    断开与某个对象相关联的任何对象。
+        disconnect( myObject, 0, 0, 0 )     //可以把0理解成任何
+        或者
+        myObject->disconnect()
+    断开与某个特定信号的任何关联。
+        disconnect( myObject, SIGNAL(mySignal()), 0, 0 )
+        或者
+        myObject->disconnect( SIGNAL(mySignal()) )
+    断开两个对象之间的关联。
+        disconnect( myObject, 0, myReceiver, 0 )
+        或者
+        myObject->disconnect(  myReceiver )
+
+http://blog.chinaunix.net/uid-20348984-id-1964206.html
+
+    函数指针不能作为信号或槽的参数。
+    但利益利用typedef来绕过这个限制
+
+    moc工具不扩展#define，因此，在signals和slots中携带参数的宏就不能正确地工作，如果不带参数是可以的。
+
+    信号与槽也不能携带模板类参数。
+    也可以用typedef来实现
+
+    嵌套的类不能有信号和槽
+

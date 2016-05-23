@@ -1,0 +1,127 @@
+1、HTTP下载，使用网络模块需要在pro文件中加入network模块
+	QUrl
+	QNetworkRequest
+	QNetworkAccessManager
+	QNetworkReply
+
+//widget.h
+		#ifndef WIDGET_H
+		#define WIDGET_H
+
+		#include <QWidget>
+		#include <QProgressBar>
+		#include <QLineEdit>
+		#include <QtNetwork/QNetworkAccessManager>  //一般用get方法来请求，就会得到返回的reply，包括一些信号
+		#include <QtNetwork/QNetworkReply>
+		#include <QtNetwork/QNetworkRequest>
+		#include <QKeyEvent>
+
+		class Widget : public QWidget
+		{
+			Q_OBJECT
+
+		public:
+			Widget(QWidget *parent = 0);
+			~Widget();
+
+		protected slots:
+			void onStartDownload();
+
+			void onFinished();          //以下4个是响应network的信号
+			void onReadyRead();
+			void onDownloadProgress(qint64 finished,qint64 total);
+			void onError(QNetworkReply::NetworkError errorCode);
+
+		protected:
+			QProgressBar *m_progressBar;
+			QLineEdit *m_urlEdit;
+			QNetworkReply *m_reply;
+			QNetworkAccessManager m_man;
+		};
+
+		#endif // WIDGET_H
+//wodget.cpp
+		#include "widget.h"
+		#include <QVBoxLayout>
+		#include <QHBoxLayout>
+		#include <QLabel>
+		#include <QPushButton>
+		#include <QUrl>
+
+		Widget::Widget(QWidget *parent)
+			: QWidget(parent),m_reply(0)
+		{
+			QVBoxLayout *mainLayout=new QVBoxLayout(this);
+			mainLayout->addStretch(1);
+			QHBoxLayout *actionLayout=new QHBoxLayout;
+			mainLayout->addLayout(actionLayout);
+			QLabel *label=new QLabel("Input URL:");
+			actionLayout->addWidget(label);
+			m_urlEdit=new QLineEdit;
+			actionLayout->addWidget(m_urlEdit,1);
+			QPushButton *btn=new QPushButton("下载");
+			connect(btn,SIGNAL(clicked()),this,SLOT(onStartDownload()));
+			actionLayout->addWidget(btn);
+			m_progressBar=new QProgressBar;
+			m_progressBar->setRange(0,100);
+			mainLayout->addWidget(m_progressBar);
+			mainLayout->addStretch(1);
+
+			connect(m_urlEdit,SIGNAL(returnPressed()),btn,SIGNAL(clicked()));
+		}
+
+		Widget::~Widget()
+		{
+
+		}
+
+		void Widget::onStartDownload()
+		{
+			QUrl url(m_urlEdit->text());                    //看这里看这里！！
+			QNetworkRequest req(url);
+			m_reply=m_man.get(req);
+
+			connect(m_reply,SIGNAL(finished()),this,SLOT(onFinished()));
+			connect(m_reply,SIGNAL(downloadProgress(qint64,qint64)),this,SLOT(onDownloadProgress(qint64,qint64)));
+			connect(m_reply,SIGNAL(readyRead()),this,SLOT(onReadyRead()));
+			connect(m_reply,SIGNAL(error(QNetworkReply::NetworkError)),this,SLOT(onError(QNetworkReply::NetworkError)));
+		}
+
+		void Widget::onReadyRead()
+		{
+			QByteArray data=m_reply->readAll();
+			qDebug()<<"Read "<<data.length();
+		}
+
+		void Widget::onFinished()
+		{
+			QByteArray data=m_reply->readAll();
+			qDebug()<<"Read "<<data.length();
+
+			m_reply->disconnect(this);
+			m_reply->deleteLater();
+			m_reply=0;
+		}
+
+		void Widget::onDownloadProgress(qint64 finished, qint64 total)
+		{
+			if(total>0)
+			{
+				int value=finished*100/total;
+				m_progressBar->setValue(value);
+			}
+		}
+
+		void Widget::onError(QNetworkReply::NetworkError errorCode)
+		{
+			qDebug()<<"error:"<<errorCode;
+			m_reply->disconnect(this);
+			m_reply->deleteLater();
+			m_reply=0;
+		}
+
+
+2、乱入
+	QLineEdit有很多方法，比如可以规定只接受那些字符，比如可以规定回显方式，还有很多信号，比如returnPressed就是按下回车，还有改动等等。
+
+3、

@@ -1,0 +1,2 @@
+1、要想在窗口关闭的时候做一些事情，比如判断保存了没啊什么的，就重写closeEvent
+    protected: void closeEvent(QCloseEvent *e);

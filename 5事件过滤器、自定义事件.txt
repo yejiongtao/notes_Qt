@@ -1,0 +1,354 @@
+处理事件的几种途径：
+		信号与槽
+		重写特定事件虚函数
+		重写通用事件函数event()
+		事件过滤器（Qt事件，Native事件）
+		QCoreApplication::notify(QObject *receiver,QEvent *event)
+
+
+1、Register例子（本例中，每一个窗口就是一个类）
+**千万不要忘了install！！
+
+	QKeyEvent backspace(QEvent::KeyPress, Qt::Key_Backspace, Qt::NoModifier);	//新建一个事件
+	QCoreApplication::sendEvent(watched, &backspace);   //把转换好的事件重新发送出去，这次if判断错误，就直接送给QWidget处理
+
+//main.cpp
+		#include "widget.h"
+		#include <QApplication>
+
+		int main(int argc, char *argv[])
+		{
+			QApplication a(argc, argv);
+			Widget w;
+			a.installEventFilter(&w);		//安装事件过滤器，这是安装在应用级别的，所以在整个应用中任何时候都是有                                  效的
+                                            //安装的是按home键就返回主页的那个过滤器
+			w.setMinimumSize(480, 360);
+			w.show();
+
+			return a.exec();
+		}
+//widget.h
+		#ifndef WIDGET_H
+		#define WIDGET_H
+
+		#include <QWidget>
+		#include <QVector>
+
+		class Widget : public QWidget
+		{
+			Q_OBJECT
+
+		public:
+			Widget(QWidget *parent = 0);
+			~Widget();
+			
+		public:												//注意是public
+			bool eventFilter(QObject *watched, QEvent *e);	//注意返回值
+
+		protected slots:
+			void onRegisterButton();
+
+		protected:
+			void resizeEvent(QResizeEvent *e);
+
+		protected:
+			QVector<QWidget*> m_subwidgets;		//这个要记住，用一个数组来保存他的子窗口
+		};
+
+		#endif // WIDGET_H
+//widget.cpp
+		#include "widget.h"
+		#include <QSize>
+		#include <QResizeEvent>
+		#include "register.h"
+		#include <QEvent>
+
+		Widget::Widget(QWidget *parent)
+			: QWidget(parent)
+		{
+			QPushButton * button = new QPushButton("注册", this);
+			connect(button, SIGNAL(clicked()), this, SLOT(onRegisterButton()));
+		}
+
+		Widget::~Widget()
+		{
+		}
+
+		bool Widget::eventFilter(QObject *watched, QEvent *e)
+		{
+			if(e->type() == QEvent::KeyPress)		//记住~~~~~~~~~~~~
+			{
+				if(((QKeyEvent*)e)->key() == Qt::Key_Home)	//注意强制类型转换的括号
+				{
+					for(int i = 0; i < m_subwidgets.size(); i++)
+					{
+						m_subwidgets.at(i)->deleteLater();
+					}
+					m_subwidgets.clear();
+					e->accept();			//记得
+					return true;
+				}
+			}
+			return QWidget::eventFilter(watched, e);	//记住
+		}
+
+		void Widget::onRegisterButton()
+		{
+			Register *reg = new Register(this);
+			reg->setAutoFillBackground(true);	//应该是从父类QObject继承下来的函数，必须要有！！！不然之前那个窗口的东西会还在的
+			reg->setGeometry(rect());			//也是必须要有的
+			m_subwidgets.push_front(reg);		//这里的意思是把reg压入数组中
+			reg->show();
+		}
+
+		void Widget::resizeEvent(QResizeEvent *e)   //这个好像不用也可以
+		{
+			if(m_subwidgets.size())
+			{
+				QSize size = e->size();
+				m_subwidgets.front()->setGeometry(0, 0, size.width(), size.height());
+			}
+		}
+//register.h
+		#ifndef REGISTER_H
+		#define REGISTER_H
+
+		#include <QWidget>
+		#include <QLineEdit>
+		#include <QPushButton>
+
+		class Register : public QWidget	//是QWIdget不是QObject
+		{
+			Q_OBJECT
+
+		public:
+			Register(QWidget *parent = 0);
+			~Register();
+
+		protected slots:
+			void onConfirmButton();
+			void onCancelButton();
+
+		public:
+			bool eventFilter(QObject *watched, QEvent *e);  //这个是把左箭头等同于退格的
+
+		protected:
+			QLineEdit *m_nameEdit;
+			QLineEdit *m_passwordEdit;
+			QPushButton *m_confirmButton;
+			QPushButton *m_cancelButton;
+		};
+
+		#endif // REGISTER_H
+//register.cpp
+		#include "register.h"
+		#include <QGridLayout>
+		#include <QHBoxLayout>
+		#include <QLabel>
+		#include <QEvent>
+		#include <QKeyEvent>
+		#include <QCoreApplication>
+
+		Register::Register(QWidget *parent)
+			: QWidget(parent)
+		{
+			QGridLayout *layout = new QGridLayout(this);
+			layout->setRowStretch(0, 1);        //第0行有弹性
+			layout->setRowStretch(4, 1);        //第4行也有弹性，于是1,2,3行就挤在中间了
+			layout->setColumnStretch(1, 1);
+			QLabel *nameLabel = new QLabel("姓名：");
+			layout->addWidget(nameLabel, 1, 0, Qt::AlignRight | Qt::AlignVCenter);
+			m_nameEdit = new QLineEdit();               //第一次遇见，文本输入框
+			m_nameEdit->installEventFilter(this);       //就只是在这个文本框里面安装过滤器
+			layout->addWidget(m_nameEdit, 1, 1, Qt::AlignLeft | Qt::AlignVCenter);
+			QLabel *passwordLabel = new QLabel("密码：");
+			layout->addWidget(passwordLabel, 2, 0, Qt::AlignRight | Qt::AlignVCenter);
+			m_passwordEdit = new QLineEdit();
+			layout->addWidget(m_passwordEdit, 2, 1, Qt::AlignLeft | Qt::AlignVCenter);
+
+			QHBoxLayout *actionLayout = new QHBoxLayout();
+			layout->addLayout(actionLayout, 3, 1, Qt::AlignLeft | Qt::AlignVCenter);
+
+			m_confirmButton = new QPushButton("确定");
+			connect(m_confirmButton, SIGNAL(clicked()), this, SLOT(onConfirmButton()));
+			actionLayout->addWidget(m_confirmButton);
+			m_cancelButton = new QPushButton("取消");
+			connect(m_cancelButton, SIGNAL(clicked()), this, SLOT(onCancelButton()));
+			actionLayout->addWidget(m_cancelButton);
+			actionLayout->addStretch(1);
+		}
+
+		Register::~Register()
+		{
+		}
+
+		void Register::onConfirmButton()
+		{
+
+		}
+
+		void Register::onCancelButton()
+		{
+
+		}
+
+		bool Register::eventFilter(QObject *watched, QEvent *e)
+		{
+			if(e->type() == QEvent::KeyPress)
+			{
+				QKeyEvent *ke = (QKeyEvent*)e;
+				if(ke->key() == Qt::Key_Left)
+				{
+					QKeyEvent backspace(QEvent::KeyPress, Qt::Key_Backspace, Qt::NoModifier);
+					QCoreApplication::sendEvent(watched, &backspace);   //把转换好的事件重新发送出去，这次if判断错误，就直接送给QWidget处理
+					return true;
+				}
+			}
+			return QWidget::eventFilter(watched, e);
+		}
+
+
+2、自定义事件。（自定义一个事件类）
+	可用自定义事件在线程间通信，可携带自定义数据，逻辑清晰不易混乱。且postEvent是线程安全的。
+步骤：
+	从QEvent继承
+	registerEventType()注册一个全局唯一的事件
+	QCoreApplication::postEvent()发送给接受者。发送的事件必须是堆上的，即使用new构造的，qt会负责在处理完之后销毁。
+	接受者重写event()方法：根据事件的类型来鉴别，如果不是自己定义的，传给父类QEvent去处理。
+
+CustomEvent代码：
+//CustomEvent.h
+		#ifndef CUSTOMEVENT_H
+		#define CUSTOMEVENT_H
+
+		#include <QEvent>
+		#include <QString>
+
+		class CustomEvent : public QEvent		//从QEvent继承
+		{
+		public:
+			CustomEvent(const QString & msg);	//构造函数，注意参数
+
+			static QEvent::Type evType();		//用来返回事件类型
+
+			static QEvent::Type m_eventType;		//保存事件类型
+			QString m_msg;							//保存事件类型的字符串
+		};
+
+		#endif // CUSTOMEVENT_H
+
+//CustomEvent.cpp
+		#include "CustomEvent.h"
+	
+		QEvent::Type CustomEvent::m_eventType = (QEvent::Type)registerEventType();	//静态成员初始化。记住！！！
+
+		CustomEvent::CustomEvent(const QString &msg)
+			:QEvent(evType()), m_msg(msg)				//把类型传给父类进行构造
+		{}
+
+		QEvent::Type CustomEvent::evType()
+		{
+			return m_eventType;
+		}
+
+//Widget.h
+		#ifndef WIDGET_H
+		#define WIDGET_H
+
+		#include <QWidget>
+		#include "CustomEvent.h"
+		#include <QLabel>
+
+		class Widget : public QWidget
+		{
+			Q_OBJECT
+
+		public:
+			Widget(QWidget *parent = 0);
+			~Widget();
+
+			bool event(QEvent *e);          //注意返回值，那些mousePressEvent()都是void的呀
+
+		protected slots:
+			void onTimeout();
+
+		protected:
+			QLabel *m_label;
+		};
+
+		#endif // WIDGET_H
+//Widget.cpp
+		#include "widget.h"
+		#include <QEvent>
+		#include <QTimer>
+		#include <QDateTime>
+		#include <QCoreApplication>
+		#include <QThread>
+
+		class SimpleThread: public QThread
+		{
+		public:
+			SimpleThread(QObject *receiver)
+				: m_receiver(receiver)
+			{}
+
+			void run()
+			{
+				while(1)
+				{
+					QThread::msleep(1000);
+					CustomEvent *ce = new CustomEvent(QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss"));
+					QCoreApplication::postEvent(m_receiver, ce);
+				}
+			}
+
+			QObject *m_receiver;
+		};
+
+		Widget::Widget(QWidget *parent)
+			: QWidget(parent)
+		{
+			m_label = new QLabel(this);
+			/*
+			QTimer *timer = new QTimer(this);
+			timer->setInterval(1000);
+			connect(timer, SIGNAL(timeout()), this, SLOT(onTimeout()));
+			timer->start();
+			*/
+			SimpleThread *t = new SimpleThread(this);
+			t->start();
+		}
+
+		Widget::~Widget()
+		{
+
+		}
+
+		bool Widget::event(QEvent *e)
+		{
+			if(e->type() == CustomEvent::evType())
+			{
+				CustomEvent *ce = (CustomEvent*)e;
+				m_label->setText(ce->m_msg);
+				m_label->adjustSize();
+				e->accept();
+				return true;
+			}
+			return QWidget::event(e);
+		}
+
+		void Widget::onTimeout()	//构建一个事件，并且发送这个事件
+		{
+			CustomEvent *ce = new CustomEvent(QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss"));
+			QCoreApplication::postEvent(this, ce);
+		}
+
+
+
+
+3、乱入：静态成员函数
+	class A
+	{
+	public:
+		static int getint();//这个就是静态成员函数，跟静态数据成员一样是被对象们共享的。
+	}

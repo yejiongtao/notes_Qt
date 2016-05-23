@@ -1,0 +1,120 @@
+1、信号与槽（其实就是一种普通的成员函数罢了）：当A对象的某信号发生后，会通过槽告知对象B
+	qt中通过信号与槽，隔离了“事件”和“响应”，使能在不知道是谁的信号、这个槽的具体作用的前提下，也能很优雅地处理事件。（就是两个对象之间耦合度比较低，容易扩展）
+	MFC中采用回调的方式来处理事件和响应事件
+
+#include <QApplication>
+#include <QPushButton>
+int main(int argc, char *argv[])
+{
+    QApplication a(argc, argv);
+    QPushButton *button=new QPushButton("Quit");
+    QObject::connect(button,SIGNAL(clicked()),&a,SLOT(quit()));//connect用来连接信号与槽，宏SIGNAL用来指定信号
+                                                  //连接到application的槽上（SLOT）
+    button->show();
+
+    return a.exec();
+}
+//SIGNAL和SLOT最后会扩展成一个字符串
+//只有QObject的派生类才有信号和槽的能力
+
+emit:自定义信号和槽的时候，用来发射信号
+	emit mysignal();
+帮助文件中可以看某个类的信号与槽，非常实用，比如QPushButton里面有setChecked的槽
+
+2、布局管理器、槽的使用  Quiz
+实现一个槽的前提：
+	a.实现的类必须是QObject的派生类
+	b.类声明的第一行写上宏Q_OBJECT
+	c.使用slots关键字（其实是一个空的宏），在protected slots后的部分放置函数的声明
+
+QVLayout *layout=new QVLayout(&myWidget);//在构建的时候给定一个父，则后面不用setLayout了。
+	layout中组件的顺序与添加的顺序一致
+	addSpace
+	addStretch(1);//1为伸缩系数。左右各添加一个伸缩系数一致的stretch之后，中间的就会居中显示了。stretch只作用于layout方向（V or H），系数大的元素会长得大。
+
+//Widget.h
+		#ifndef WIDGET_H
+		#define WIDGET_H
+
+		#include <QWidget>		
+		#include <QLabel>		//要用到才、就包含
+		#include <QPushButton>
+
+		class Widget : public QWidget
+		{
+			Q_OBJECT
+
+		public:
+			Widget(QWidget *parent = 0);
+			~Widget();
+
+		protected slots:
+			void onPressQuestionButton();
+			void onPressAnswerButton();
+
+		private:
+			QLabel *Text;
+			QPushButton *QuestionButton;
+			QPushButton *AnswerButton;
+			int lIndex;
+		};
+
+		#endif // WIDGET_H
+//Widget.cpp
+		#include "widget.h"
+		#include <QVBoxLayout>
+		#include <QHBoxLayout>
+
+		static const char *acQuestions[]={"今天是什么日子？",
+										 "儿童节要干什么？",
+										 "哪有小盆友？",
+										 "送什么礼物？",
+										 "还有什么想说的？"};
+		static const char *acAnswers[]={ "儿童节！",
+										"要送小盆友礼物！",
+										"蒋美丽小盆友~",
+									   "这个小软件哈哈哈哈",
+									   "宝贝晚安~mua"};
+
+		Widget::Widget(QWidget *parent)
+			: QWidget(parent),lIndex(0)
+		{
+			QVBoxLayout *VLayout=new QVBoxLayout(this);
+			VLayout->addStretch(1);
+			Text=new QLabel(QString::fromUtf8(acQuestions[0]));	//注意这里的中文字符串用法
+			VLayout->addWidget(Text,0,Qt::AlignCenter);			//注意这里的居中用法，第二个参数是拉伸系数
+			VLayout->addSpacing(20);
+
+			QHBoxLayout *HLayout=new QHBoxLayout(this);
+			VLayout->addLayout(HLayout);
+			HLayout->addStretch(1);
+			QuestionButton=new QPushButton("QUESTION");
+			AnswerButton=new QPushButton("ANSWER");
+			HLayout->addWidget(QuestionButton);
+			HLayout->addWidget(AnswerButton);
+			HLayout->addStretch(1);
+
+			QObject::connect(QuestionButton,SIGNAL(clicked()),this,SLOT(onPressQuestionButton()));
+			QObject::connect(AnswerButton,SIGNAL(clicked()),this,SLOT(onPressAnswerButton()));
+		}
+
+		Widget::~Widget()
+		{
+			//按理说是要有几个delete的   
+            //并不需要。上面new的都是Widget对象的子类，Widget被删除的时候（main里），他们都会自动被干掉。
+		}
+
+		void Widget::onPressQuestionButton()
+		{
+			int lCount=sizeof(acQuestions)/sizeof(acQuestions[0]);
+			lIndex=(lIndex+1)%lCount;
+			Text->setText(acQuestions[lIndex]);
+		}
+
+		void Widget::onPressAnswerButton()
+		{
+			Text->setText(acAnswers[lIndex]);
+		}
+
+
+

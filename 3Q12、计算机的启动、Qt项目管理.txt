@@ -1,0 +1,232 @@
+1、Q12：12个问题来测评软件开发的环境
+
+connect的静态版本：QObject::connect()，与成员函数版本this->connect()
+
+QMessageBox有一些静态方法，比如问题框QMessageBox::StandardButton ret = QMessageBox::question(this,"问题","你真的要退出吗？",QMessageBox::Yes|QMessageBox::No);返回值是StandardButton,对于Yes，No，Save，Ok等等都有相应的值。
+
+QComboBox
+
+QGridLayout表格布局
+	addWidget(widget,row,col,...)
+	addLayout
+	addItem
+
+
+2、乱入：计算机的启动
+	1）运行只读内存ROM中的BIOS程序（Basic Input/Output System）
+		BIOS主要进行硬件自检（POST）、I/O驱动等
+		接着BIOS把控制权交给下一阶段的启动程序，具体交给谁决定于外部储存设备的“启动顺序”
+	2）主引导记录（MBR：Master Boot Record）
+		读取指定设备的第一个扇区512B(MBR)，存在0000:7c00中（0x7c000），如果最后两个字节是0x55AA，则表明设备可用于启动。
+		主要是告诉计算机取那个分区找操作系统。
+		MBR：
+			（1） 第1-446字节：调用操作系统的机器码。	（446B）
+			（2） 第447-510字节：分区表（Partition table）。（64B）
+			（3） 第511-512字节：主引导记录签名（0x55和0xAA）。（2B）
+
+		其中：分区表的长度只有64个字节，里面又分成四项，每项16个字节。所以，一个硬盘最多只能分四个一级分区，又叫做”主分区”。
+			每个主分区的16个字节，由6个部分组成：
+			（1） 第1个字节：如果为0x80，就表示该主分区是激活分区，控制权要转交给这个分区。四个主分区里面只能有一个是激活的。
+			（2） 第2-4个字节：主分区第一个扇区的物理位置（柱面、磁头、扇区号等等）。
+			（3） 第5个字节：主分区类型。
+			（4） 第6-8个字节：主分区最后一个扇区的物理位置。
+			（5） 第9-12字节：该主分区第一个扇区的逻辑地址。
+			（6） 第13-16字节：主分区的扇区总数。
+			最后的四个字节（”主分区的扇区总数”），决定了这个主分区的长度。也就是说，一个主分区的扇区总数最多不超过2的32次方。
+			如果每个扇区为512个字节，就意味着单个分区最大不超过2TB。再考虑到扇区的逻辑地址也是32位，所以单个硬盘可利用的空间最大也不超过2TB。如果想使用更大的硬盘，只有2个方法：一是提高每个扇区的字节数，二是增加扇区总数。
+
+	3）硬盘启动
+	三种情况：
+		卷引导记录VBR(Volume Boot Record)（分区的第一个扇区）
+		扩展分区和逻辑分区，一直读扩展引导记录EBR(Extended Boot Record)，直到到达最底层的逻辑分区
+		启动管理器
+	4）操作系统
+
+GPT分区与MBR分区有些不同
+具体的看：http://blog.csdn.net/langeldep/article/details/8788119
+
+3、定义自己的信号
+	关键字 signals用来定义信号，其实是一个宏，展开后就是public
+	emit用来发射信号，空宏
+使用信号的一般步骤
+	从QObject或其派生类集成
+	Q_OBJECT
+	signals:声明信号（成员函数原型），只要声明，不需要自己实现
+	连接一个槽到自定义信号
+	特定的条件发生时，emit你的信号或通过连接到别的信号来发生
+
+信号可以连接信号：
+	connect(cancel,SIGNAL(click()),this,SIGNAL(cancel()));//把点击cancel按钮这个信号连接到自己定义的cancel()这个信号上
+	connect(this,SIGNAL(cancel()),this,SLOTS(onCancel()));//再把自己的信号连接到自己的槽上
+
+4、Q12
+//widget.h
+	#ifndef WIDGET_H
+	#define WIDGET_H
+
+	#include <QWidget>
+	#include <QComboBox>
+
+	class Widget : public QWidget
+	{
+		Q_OBJECT
+
+	public:
+		Widget(QWidget *parent = 0);
+		~Widget();
+
+	protected slots:
+		void onSubmit();
+		void onCancel();
+
+	signals:
+		void Cancel();
+
+	private:
+		QComboBox **ScoreUnity;		//成员变量不一定包括全部的按钮什么的，主要是要用作全局的就要
+		int lQuestionCount;
+	};
+
+	#endif // WIDGET_H
+
+
+
+//widget.cpp
+	#include "widget.h"
+	#include <QGridLayout>
+	#include <QLabel>
+	#include <QPushButton>
+	#include <QMessageBox>
+	#include <QString>
+	//#include <qobjectdefs.h>
+
+	Widget::Widget(QWidget *parent)
+		: QWidget(parent)
+	{
+		const char* acQuestions[] = {
+				"1. 我知道对我的工作要求吗？",
+				"2. 我有做好我的工作所需要的材料和设备吗？",
+				"3. 在工作中，我每天都有机会做我最擅长做的事吗？",
+				"4. 在过去的七天里，我因工作出色而受到表扬吗？",
+				"5. 我觉得我的主管或同事关心我的个人情况吗？",
+				"6. 工作单位有人鼓励我的发展吗？",
+				"7. 在工作中，我觉得我的意见受到重视吗？",
+				"8. 公司的使命目标使我觉得我的工作重要吗？",
+				"9. 我的同事们致力于高质量的工作吗？",
+				"10. 我在工作单位有一个最要好的朋友吗？",
+				"11. 在过去的六个月内，工作单位有人和我谈及我的进步吗？",
+				"12. 过去一年里，我在工作中有机会学习和成长吗？"
+			};
+		lQuestionCount=sizeof(acQuestions)/sizeof(acQuestions[0]);
+		ScoreUnity=new QComboBox*[lQuestionCount];  //之所以需要这个指针数组，是因为要保存有score
+
+		QGridLayout *Layout=new QGridLayout(this);
+	 //   Layout->setColumnMinimumWidth(1,80);
+		QStringList ScoreList("0");					//****
+		ScoreList<<"1"<<"2"<<"3"<<"4"<<"5";
+
+		for(int i=0;i<lQuestionCount;i++)
+		{
+			QLabel *Text=new QLabel(acQuestions[i]);
+			Layout->addWidget(Text,i,0,Qt::AlignLeft);//addWidget addItem什么区别
+			QComboBox *Score=new QComboBox();
+			ScoreUnity[i]=Score;
+			Score->addItems(ScoreList);
+			Score->setCurrentIndex(3);
+			Layout->addWidget(Score,i,1,Qt::AlignRight);
+		}
+
+	 //   Layout->setRowStretch(lQuestionCount, 1);
+
+		QPushButton *SubmitButton=new QPushButton("submit");
+		QPushButton *CancelButton=new QPushButton("cancel");
+		connect(SubmitButton,SIGNAL(clicked()),this,SLOT(onSubmit()));
+		connect(CancelButton,SIGNAL(clicked()),this,SIGNAL(Cancel()));
+		connect(this,SIGNAL(Cancel()),this,SLOT(onCancel()));
+		Layout->addWidget(CancelButton,lQuestionCount,0,Qt::AlignRight);
+		Layout->addWidget(SubmitButton,lQuestionCount,1,Qt::AlignRight);
+	}
+
+	Widget::~Widget()
+	{
+
+	}
+
+	void Widget::onSubmit()
+	{
+		QString Outcome;
+		for(int i;i<lQuestionCount;i++)
+		{
+			Outcome+=QString("Question%1: %2\n").arg(i+1).arg(ScoreUnity[i]->currentText());	//arg函数用于替代%1 %2 
+		}
+		QMessageBox *Msg=new QMessageBox(QMessageBox::Information,"测评结果",Outcome,QMessageBox::Ok);//后面那个ok可以省掉，information的默认就有一个ok按钮
+		Msg->exec();                                 //有exec才会弹出来
+	}
+
+	void Widget::onCancel()
+	{
+		QMessageBox::StandardButton ret = QMessageBox::question(this,"问题","你确定要退出吗?",QMessageBox::Yes|QMessageBox::No);
+		if(ret == QMessageBox::Yes)
+			exit(0);      //可以。原来是qApp->quit();但是要#include<QApplication>,qApp是全局指针，指向唯一的这个应用
+	}
+
+4、Qt项目管理
+	1）qmake工具：用来简化项目构建过程（会自动调用moc,uic）
+	2）moc工具(meta-object compiler)：用来处理Qt针对C++的扩展（读取头文件，处理包含Q_OBJECT的类）
+	3）uic工具（user interface compiler）:用来把在设计界面中设计的ui转化成ui_xxx.h/.cpp
+	4）qmake根据pro文件生成Makefile，其中包含构建规则、moc即uic规则。make工具根据Makefile进行编译连接
+
+_HelloAndroid.pro文件。（注释以#开头）
+	#-------------------------------------------------
+	#
+	# Project created by QtCreator 2015-06-02T10:16:41
+	#
+	#-------------------------------------------------
+
+	QT       += core gui	#两个模块
+
+	greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
+
+	TARGET = _HelloAndroid	#指定目标文件的名字
+	TEMPLATE = app			#指定项目类型，有可能是lib
+
+
+	SOURCES += main.cpp\	#实现文件
+			widget.cpp
+
+	HEADERS  += widget.h	#头文件
+
+	CONFIG += mobility
+	MOBILITY = 
+
+	#如果要附加库，则用LIBS += -LZ:\software，-L表示路径（绝对或相对都可以）
+	#头文件路径：INCLUDEPATH += Z:\ss
+	#定义宏：DEFINES += ...
+
+5、pro文件语法：具体的可以在帮助文件下以qmake为关键字查询
+	变量：
+		SOURCES,HEADERS等内置变量
+		自定义变量：MY_VAR=xxx
+		引用变量：$$HEADERS 或 $${HEADERS}
+	函数：
+		message输出信息
+		greaterThan等内置函数
+	代码块和条件测试
+		语法：
+			<condition>{
+				<commander or definition>
+				...
+			}
+			或：
+			<condition>:<一句command>
+		条件可以是变量、环境、函数
+		例如：
+			CONFIG(debug){
+				message("debug build");
+			}
+			android:message("android version");
+			equals(TARGET,"_HelloAndroid"):message("done");
+
+6、pro.user文件（XML文件），保存有与我的项目相关的配置，如构建套件、构建目录、中间文件目录、运行设置、构建步骤等等。
+pri文件：当做项目头文件使用（如果多个项目的pro中有很多一样的地方，就可以创建一个pri文件来放这些东西），文件语法与pro相同。
+	include(xxx.pri)

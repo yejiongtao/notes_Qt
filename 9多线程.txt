@@ -1,0 +1,381 @@
+1、多线程，三种方式：
+	QThread
+	QThreadPool
+	QtConcurrent（高级、方便）
+
+2、QThread创建一个线程：
+	从QThread继承
+	重写run函数
+	创建一个实例
+	调用start方法（开启之后新线程就与主线程（GUI）并行执行了）
+
+		#include "widget.h"
+		#include <QApplication>
+		#include <QThread>
+		#include <QDebug>
+
+		class MyThread :public QThread
+		{
+			void run()
+			{
+				qDebug()<<"hello,"<<QThread::currentThreadId();//注意qDebug()
+				exec();			//开启本线程的事件循环！！！！
+			}
+		};
+
+		int main(int argc, char *argv[])
+		{
+			QApplication a(argc, argv);
+			Widget w;
+			w.show();
+			qDebug()<<"Main thread,"<<QThread::currentThreadId();
+
+			MyThread t;
+			t.start();
+
+			return a.exec();
+		}
+
+理解：
+	线程对象会创建一个新的线程。线程对象处在一个线程中（上例中是GUI线程），他会创建另外一个线程。
+	父子关系不能跨线程。所以在新的线程中创建对象的时候，如果把父指定为myThread，那就跨线程了，就有问题了。
+线程间通信：
+	自定义事件，postEvent()
+	信号与槽
+
+3、使用QThread、信号与槽在线程之间通信例子：
+	QProgressBar 进度条，setValue(int)可以设置当前值，setWidget设置范围
+
+//widget.h
+		#ifndef WIDGET_H
+		#define WIDGET_H
+
+		#include <QWidget>
+		#include <QProgressBar>
+		#include <QTimer>
+		#include <QThread>
+	//GUI线程中有一个Widget对象，自定义线程DownloadThread中有一个Worker对象，Worker对象发射一个信号，通过线程连接到Widget中的一个槽。
+
+		class Worker : public QObject   //我悟出来了！QObject的范围比QWidget大，如果是要显示一个窗口的，就从QWidget来继承
+		{
+			Q_OBJECT
+
+		public:
+			Worker(QObject *parent=0);
+			~Worker();
+
+		signals:
+			void ProgressChanged(int progress);     //注意progress居然使用int来表示
+
+		protected slots:
+			void onTimeout();
+
+		public:
+			QTimer m_timer;
+			int m_progress;
+		};
+
+		class DownloadThread : public QThread
+		{
+		public:
+			DownloadThread(QObject *receiver,QObject *parent=0);//注意参数要传入接受信号的对象
+			~DownloadThread();
+
+			void run();
+
+		protected:
+			QObject *m_reciever;    //都是QObject!!!!
+		};
+
+		class Widget : public QWidget
+		{
+			Q_OBJECT
+
+		public:
+			Widget(QWidget *parent = 0);
+			~Widget();
+
+		protected:
+			QProgressBar *m_progress;
+		};
+
+		#endif // WIDGET_H
+//widget.cpp
+		#include "widget.h"
+		#include <QVBoxLayout>
+
+		Widget::Widget(QWidget *parent)
+			: QWidget(parent)
+		{
+			QVBoxLayout *m_layout=new QVBoxLayout(this);
+			m_progress=new QProgressBar;
+			m_layout->addWidget(m_progress,0,Qt::AlignCenter);
+
+			DownloadThread *m_thread=new DownloadThread(m_progress);
+			connect(m_thread,SIGNAL(finished()),m_thread,SLOT(deleteLater()));//自生自灭
+			m_thread->start();          //别忘了开启线程
+		}
+
+		Widget::~Widget()
+		{}
+
+
+		Worker::Worker(QObject *parent)
+			:QObject(parent)
+			,m_progress(0)
+		{
+			connect(&m_timer,SIGNAL(timeout()),this,SLOT(onTimeout()));
+			m_timer.start(100);
+		}
+
+		Worker::~Worker()
+		{}
+
+		void Worker::onTimeout()
+		{
+			if(m_progress<100)
+			{
+				m_progress++;
+				emit ProgressChanged(m_progress);
+			}
+			else
+			{
+				m_timer.stop();
+				QThread::currentThread()->quit();   //这样才能结束这个线程！！
+				delete this;                    //Worker把自己干掉
+			}
+		}
+
+
+		DownloadThread::DownloadThread(QObject *receiver, QObject *parent)
+			:QThread(parent),m_reciever(receiver)
+		{}
+
+		DownloadThread::~DownloadThread()
+		{}
+
+		void DownloadThread::run()
+		{
+			Worker *m_worker=new Worker;
+			connect(m_worker,SIGNAL(ProgressChanged(int)),m_reciever,SLOT(setValue(int)));//注意！这里的m_receiver！
+			exec();         //记得开启事件循环！！！！！
+		}
+
+
+4、QThreadPool
+	1）从QRunnable继承，QRunnable的派生类都会被送进进程池处理
+	2)重写run()函数，该函数会在新的线程中执行
+	3)QThreadPool::globalInstance()->start(new ImageRunnable(this))提交runnable任务。执行完之后线程池会负责把他干掉
+
+理解：
+	QThread和QThreadPool是两种同等地位的方法，自定义事件和信号槽也是，可以根据需要组合。
+	
+//widget.h
+		#ifndef WIDGET_H
+		#define WIDGET_H
+
+		#include <QWidget>
+		#include <QEvent>
+		#include <QImage>
+
+		class ImageEvent : public QEvent
+		{
+		public:
+			ImageEvent();
+			~ImageEvent();
+
+			static QEvent::Type m_evType;
+
+			QImage m_image;
+		};
+
+		class Widget : public QWidget
+		{
+			Q_OBJECT
+
+		public:
+			Widget(QWidget *parent = 0);
+			~Widget();
+
+			bool event(QEvent *e);   //重写event函数来处理自定义事件
+			QSize sizeHint() const {    return QSize(480,480);}
+
+		protected slots:
+			void onTimeout();
+
+		protected:
+			void paintEvent(QPaintEvent *e);
+
+		protected:
+			QImage m_image;
+		};
+
+		#endif // WIDGET_H
+//widget.cpp
+		#include "widget.h"
+		#include <QCoreApplication>
+		#include <QTimer>
+		#include <QRunnable>
+		#include <QColor>
+		#include <QThreadPool>
+		#include <QPainter>
+		#include <QDateTime>
+
+		class ImageRunnable : public QRunnable
+		{
+		public:
+			ImageRunnable(QObject *receiver)
+				:m_receiver(receiver)
+			{}
+			~ImageRunnable(){}
+
+			void run()
+			{
+				QImage image(400,400,QImage::Format_RGB32);
+				qsrand(QDateTime::currentDateTime().toTime_t());
+				for(int i=0;i<400;i++)
+				{
+					int red=qrand()%256;
+					for(int j=0;j<400;j++)
+					{
+						image.setPixel(i,j,qRgb(red,0,0));  //include <qColor>
+					}
+				}
+				ImageEvent *e=new ImageEvent;
+				e->m_image=image;
+				QCoreApplication::postEvent(m_receiver,e);
+			}
+			QObject *m_receiver;
+		};
+
+		QEvent::Type ImageEvent::m_evType=(QEvent::Type)registerEventType();
+
+		ImageEvent::ImageEvent():QEvent(m_evType){}
+		ImageEvent::~ImageEvent(){}
+
+
+		Widget::Widget(QWidget *parent)
+			: QWidget(parent)
+		{
+			QTimer *timer=new QTimer;
+			connect(timer,SIGNAL(timeout()),this,SLOT(onTimeout()));
+			timer->start(1000);
+		}
+
+		Widget::~Widget()
+		{
+
+		}
+
+		void Widget::onTimeout()
+		{
+			QThreadPool::globalInstance()->start(new ImageRunnable(this));  //this是receiver
+		}
+
+		bool Widget::event(QEvent *e)
+		{
+			if(e->type()==ImageEvent::m_evType)     //
+			{
+				e->accept();
+				m_image=((ImageEvent *)e)->m_image; //记得类型转换
+				update();                           //记得
+				return true;
+			}
+			return QWidget::event(e);
+		}
+
+		void Widget::paintEvent(QPaintEvent *e)
+		{
+			QPainter p(this);           //千万记得this！！！！！！
+			p.drawImage(0,0,m_image);
+		}
+
+5、QtConcurrent，需要在工程文件中引入concurrent模块：QT       += core gui concurrent
+非常强大、方便。
+	
+步骤：
+	实现一个任务执行函数，用QtConcurrent::run()调用这个函数
+	返回一个QFuture<T>
+	把QFuture对象添加到QFutureWatcher<T>，就可以处理了
+
+//widget.h
+		#ifndef WIDGET_H
+		#define WIDGET_H
+
+		#include <QWidget>
+		#include <QImage>
+		#include <QFutureWatcher>   //注意
+
+		class Widget : public QWidget
+		{
+			Q_OBJECT
+
+		public:
+			Widget(QWidget *parent = 0);
+			~Widget();
+
+			QSize sizeHint() const { return QSize(800, 600); }
+
+		protected:
+			void paintEvent(QPaintEvent *e);
+
+		protected slots:
+			void onLoad();
+			void onFinished();      //响应QFutureWatcher的信号
+
+		protected:
+			QImage m_image;
+			QFutureWatcher<QImage> m_watcher;   //QFutureWatcher是一个模板类，传入的参数是这个watcher要返回的对象的类型
+		};
+
+		#endif // WIDGET_H
+//widget.cpp
+		#include "widget.h"
+		#include <QPainter>
+		#include <QtConcurrent> //！！
+		#include <QFuture>      //！！
+		#include <QTimer>
+
+		QImage loadImage(const QString &url)
+		{
+			QImage image(url);
+			return image;
+		}
+
+		Widget::Widget(QWidget *parent)
+			: QWidget(parent)
+		{
+			connect(&m_watcher, SIGNAL(finished()), //也就是说，执行完任务执行函数之后，就会发出一个finished信号
+					this, SLOT(onFinished()));
+			QTimer::singleShot(1000, this, SLOT(onLoad()));
+		}
+
+		Widget::~Widget()
+		{
+
+		}
+
+		void Widget::paintEvent(QPaintEvent *e)
+		{
+			QPainter p(this);
+			p.drawImage(rect(), m_image);
+		}
+
+		void Widget::onLoad()
+		{
+			QString url(":/sea.jpg");
+			QFuture<QImage> future = QtConcurrent::run(loadImage, url); //run函数的第一个参数是执行任务的函数，后面的是这个函数的参数
+																	 //run返回值是QFuture对象，用来操作这个异步进程。
+			m_watcher.setFuture(future);    //把run返回的QFuture对象添加到QFutureWatcher当中。
+		}
+
+		void Widget::onFinished()
+		{
+			m_image = m_watcher.future().result();
+			if(!m_image.isNull())
+			{
+				update();
+			}
+		}
+
+

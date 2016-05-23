@@ -1,0 +1,189 @@
+1、QPainter,结合paintEvent来画图
+drawText
+drawImage,drawPixmap（会针对设备做一些优化处理，可能会比drawImage快一点）,drawPicture
+QFileDialog Qt中用来打开文件的东西
+
+//widget.h
+		#ifndef WIDGET_H
+		#define WIDGET_H
+
+		#include <QWidget>
+		#include <QMouseEvent>
+		#include <QPixmap>
+
+		class Widget : public QWidget
+		{
+			Q_OBJECT
+
+		public:
+			Widget(QWidget *parent = 0);
+			~Widget();
+
+		protected:	//重写事件函数
+			void mouseDoubleClickEvent(QMouseEvent *e);
+			void paintEvent(QPaintEvent *e);
+
+		protected:
+			QString m_filePath;
+			QPixmap m_pixmap;	//要把图像保存起来，在窗口被遮挡之后要重新更新
+		};
+
+		#endif // WIDGET_H
+//widget.cpp
+		#include "widget.h"
+		#include <QPainter>
+		#include <QPen>
+		#include <QFileDialog>
+
+		Widget::Widget(QWidget *parent)
+			: QWidget(parent)
+		{
+		}
+
+		Widget::~Widget()
+		{
+
+		}
+
+		void Widget::mouseDoubleClickEvent(QMouseEvent *e)
+		{
+			QString fileName = QFileDialog::getOpenFileName(this, tr("Open File"),	//第二个参数是窗口的名字，tr是translate的意思，这里没有好像也行
+															QDir::currentPath(),	//默认路径
+															tr("Images (*.png *.gif *.bmp *.xpm *.jpg)"));//筛选器
+			if(!fileName.isEmpty())
+			{
+				m_pixmap.load(fileName);
+				m_filePath = fileName;
+			}
+		}
+
+		void Widget::paintEvent(QPaintEvent *e)	//每一次改变窗口大小、覆盖窗口什么的都会触发这个事件。（好像第一次show这个widget就会触发）
+		{
+			QPainter p(this);					//别忘了画师
+			p.drawPixmap(rect(), m_pixmap);		//注意这里的rect()用法
+
+			QPen pen(Qt::blue);			//画笔
+			p.setPen(pen);
+			p.drawText(10, 30, m_filePath);
+		}
+
+2、drawPoint,drawLine,drawRect,drawRoundedRect,drawEllipse,drawPath
+注意：关于connect的位置
+	如果是本类的信号连接本类的槽，那就在类的实现文件中connect就行。
+	如果是连接子窗口的槽，那也在父widget中连接。
+	如果连接兄弟窗口的槽，那就不能在里面连接了，因为这时候另外一个类的实例可能还没有
+	qApp的槽是全局的。
+
+3、自定义控件（据说，画图的那个selector就是一个自定义控件了）
+要做的事情：
+	从已有的控件继承。
+	指定大小（重写QSize sizeHint()函数）。
+	处理事件（一般是mousePress,mouseRelease,paintEvent）
+	提供一个信号（void clicked()）
+	其他根据需要 
+
+****是不是可以从QPushButton那里继承，然后重写一下enterEvent和leaveEvent，实现鼠标上移的时候有反应
+	有一个问题：重写paintEvent之后原来的paintEvent就失效了，于是所有的都要自己画。包括text
+
+//mybutton.h
+		#ifndef MYBUTTON_H
+		#define MYBUTTON_H
+
+		#include <QWidget>
+
+		class MyButton: public QWidget  //自定义控件可以从QPushButton,QLabel这种已有的控件来继承。这里从所有控件的父QWidget继承
+		{
+			Q_OBJECT
+
+		public:
+			MyButton(QWidget *parent=0);
+			~MyButton();
+
+			QSize sizeHint(){return QSize(70,30);}
+			void SetText(const QString& text);      //根据需要
+			QString Text(){return m_text;}
+
+		signals:
+			void clicked();         //需要有个接口
+
+		protected:
+			void mousePressEvent(QMouseEvent *e);
+			void mouseReleaseEvent(QMouseEvent *e);
+			void paintEvent(QPaintEvent *e);
+			void enterEvent(QEvent *e);
+			void leaveEvent(QEvent *e);
+
+		protected:
+			QString m_text;
+			bool m_pressed;
+			bool m_frame;
+		};
+
+		#endif // MYBUTTON_H
+//mybutton.cpp
+		#include "mybutton.h"
+		#include <QPainter>
+
+		MyButton::MyButton(QWidget *parent)
+			:QWidget(parent)
+			,m_text("button")
+			,m_pressed(false)
+			,m_frame(false)
+		{}
+
+		MyButton::~MyButton()
+		{}
+
+		void MyButton::paintEvent(QPaintEvent *e)
+		{
+			QPainter p(this);
+			p.setPen(Qt::blue);
+			if(m_pressed==true)
+			{
+				p.fillRect(rect(),Qt::gray);
+			}
+			else
+			{
+				p.fillRect(rect(),Qt::lightGray);
+			}
+
+			if(m_frame==true)
+			{
+				p.drawRect(0,0,width()-1,height()-1);   //注意这用法
+			}
+			p.drawText(rect(),Qt::AlignCenter,m_text);  //用法
+		}
+
+		void MyButton::mousePressEvent(QMouseEvent *e)
+		{
+			m_pressed=true;
+			update();                                   //记得update
+		}
+
+		void MyButton::mouseReleaseEvent(QMouseEvent *e)
+		{
+			m_pressed=false;
+			update();
+			emit clicked();                         //记得发射信号！
+		}
+
+		void MyButton::enterEvent(QEvent *e)
+		{
+			m_frame=true;
+			update();
+		}
+
+		void MyButton::leaveEvent(QEvent *e)
+		{
+			m_frame=false;
+			update();
+		}
+
+		void MyButton::SetText(const QString &text)
+		{
+			m_text=text;
+			update();
+		}
+
+
+

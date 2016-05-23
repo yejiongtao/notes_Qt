@@ -1,0 +1,186 @@
+1、Qt应用的编译过程
+	qmake
+	Make：调用g++进行编译
+		moc xxx.h：找到含有Q_OBJECT的头文件进行处理
+		uic xxx.ui
+	make install:可以在pro文件中规定安装的规则 
+
+2、扩展关键字分析
+	signals ==public
+	slots 空宏
+	emit 空宏
+	SIGNAL
+	SLOT	这两个定义在<qobjectdefs.h>中
+
+3、more about signals and slots
+	一个信号可以连接多个槽
+	connect函数最后一个参数：Qt::ConnectionType枚举，默认为AntoConnection
+		直接连接：DirectConnection，信号发射时槽立即被调用，一般用在同个线程之内。有时候不同线程之间也会用到这个，但是要小心不要对共享数据产生干扰。
+		队列连接：QueuedConnection，向槽的对象发送一个事件，下一事件循环时槽才被调用，多用于线程之间。
+		阻塞式队列连接：BlockingQueuedConnection，也是用于线程之间。会把发射信号的对象阻塞掉，等槽执行完了之后才继续执行发射信号的对象。
+		自动连接：AutoConnection，会根据对象的线程属性自动判断。
+	
+	经验之谈：
+		基本上只要用信号和槽就可以实现多种交互的应用
+		槽的参数必须与信号的类型匹配
+		槽的参数个数可以少于但不能多于信号的参数个数
+		信号与槽的连接是动态的，是在运行的时候发生的。所以如果连接到不存在的信号或槽上，运行的时候才会出错，但不会报错
+		信号与槽的连接时可以断开的,disconnect()函数
+		槽不能连接槽
+		信号与槽可以分属于不同线程环境中的对象。多数通过QCoreApplication::postEvent()完成槽的调用，因此槽的调用一般发生在槽所属对象所在的线程环境中。
+		QObject::sender()可以获取发送信号的对象。
+
+4、事件：Qt通过事件循环从操作系统拿到并转换事件，并派发到每一个有可能需要事件的对象那里。
+	处理事件的几种途径：
+		信号与槽
+		重写特定事件虚函数
+		重写通用事件函数event()
+		事件过滤器（Qt事件，Native事件），可以对别的对象的事件进行拦截，处理了则他就没有处理的机会了。
+		QCoreApplication::notify(QObject *receiver,QEvent *event)
+
+//widget.h
+		#ifndef WIDGET_H
+		#define WIDGET_H
+
+		#include <QWidget>
+		#include <QLabel>
+
+		class Widget : public QWidget
+		{
+			Q_OBJECT
+
+		public:
+			Widget(QWidget *parent = 0);
+			~Widget();
+
+		protected:
+			QLabel *Text;
+
+		protected:
+			void resizeEvent(QResizeEvent *e);	//重写虚函数
+			void mousePressEvent(QMouseEvent *e);
+			void keyPressEvent(QKeyEvent *e);       //一般还要处理一个keyReleaseEvent()
+		};
+
+		#endif // WIDGET_H
+
+//widget.cpp
+		#include "widget.h"
+		#include <QResizeEvent> //头文件的包含！
+		#include <QMouseEvent>
+		#include <QKeyEvent>
+
+		Widget::Widget(QWidget *parent)
+			: QWidget(parent)
+		{
+			Text=new QLabel("Hello world!",this);   //这里一定要指定父，之前的是放在layout中然后给layout指定父
+			Text->setGeometry(10,10,100,50);        //指定绝对坐标及长宽
+		}
+
+		Widget::~Widget()
+		{}
+
+		void Widget::resizeEvent(QResizeEvent *e)
+		{
+			QSize eSize=e->size();          //以前没见过
+			QSize TextSize=Text->size();
+			Text->move((eSize.width()-TextSize.width())/2,(eSize.height()-TextSize.height())/2);
+			QWidget::resizeEvent(e);        //一定要再把事件交给父类QWidget处理，因为我们只是关心事件的某一小部分，不全面。注意不是Widget！
+		}
+
+		void Widget::mousePressEvent(QMouseEvent *e)    //这里左键右键都可以
+		{
+			Text->move(e->pos());
+			QWidget::mousePressEvent(e);
+		}
+
+		void Widget::keyPressEvent(QKeyEvent *e)
+		{
+			switch(e->key())		
+			{
+			case Qt::Key_Up:                    //这里的Qt::Key_up很方便啊，各种按键都有
+				Text->move(Text->x(),Text->y()-10);
+				break;
+			case Qt::Key_Down:
+				Text->move(Text->x(),Text->y()+10);
+				break;
+			case Qt::Key_Right:
+				Text->move(Text->x()+10,Text->y());
+				break;
+			case Qt::Key_Left:
+				Text->move(Text->x()-10,Text->y());
+				break;
+			default:
+				QWidget::keyPressEvent(e);
+			}
+			e->accept();            //处理过的就标识一下，标识这个事件不用再处理了
+		}
+(在重写事件的时候，要理解为这个事件现在发生了，要干什么。)
+
+5、乱入：关于public,protected,private
+	protected不能被类外代码调用，可以被继承类调用。
+	继承方式：（就是把封装性低的都换成高的）
+		1.public继承：基类public成员，protected成员，private成员的访问属性在派生类中分别变成：public, protected, private
+		2.protected继承：基类public成员，protected成员，private成员的访问属性在派生类中分别变成：protected, protected, private
+		3.private继承：基类public成员，protected成员，private成员的访问属性在派生类中分别变成：private, private, private
+
+6、一些鼠标事件：
+	mousePressEvent()
+	mouseReleaseEvent()
+	mouseMoveEvent()
+	mouseDoubleClickEvent()
+	enterEvent()	//鼠标进入widget
+	leaveEvent()
+	wheelEvent()
+	dragEnterEvent()
+	dragLeaveEvent()
+	dragMoveEvent()
+	dropEvent()
+
+7、事件过滤器
+	Qt事件过滤器：
+		对象级别
+		应用级别
+	原生事件过滤器（native event filter）：事件从操作系统还未进入Qt之前
+
+两个步骤：
+	实现过滤器
+	在被过滤的对象那里安装过滤器
+例子见下一笔记
+
+8、定时器：依赖于事件循环，有可能因为处理到十分复杂的事件而有所偏差。
+两种方法：
+	QObject::startTimer
+		内存占用小，定时器多时有优势。
+		会返回一个整型id
+		会一直触发下去，不是一次性的。
+	QTimer
+
+第一种方法：定时器是在后面运行的一个东西，每隔指定的时间就会给应用发一个事件QTimerEvent，我们要做的是重写timerEvent()，然后触发定时器就行。
+	void Widget::timerEvent(QTimerEvent *e)
+	{
+		if(TimerId==e->timerId())
+		{
+			QDateTime Current=QDateTime::currentDateTime();//#include<QDateTime>
+			QString strTime=Current.toString("hh:mm:ss");
+			TimeLabel->setText(strTime);
+			TimeLabel->adjustSize();
+			e->accept();
+		}
+		QWidget::timerEvent(e);
+	}
+	构建函数中：
+	TimerId = startTimer(1000);//每一秒发一个事件
+	停止定时器：killTimer(TimerId);
+
+第二种方法：使用QTimer，就是创建一个定时器对象，通过timeout信号，自己写一个onTimeout的槽就行。
+	#include<QTimer>
+	QTimer *timer=new QTimer(this);
+	timer->setInterval(1000);
+	timer->start();
+	timer->setSingleShot(true);//打开了就是一次性的
+	connect(timer,SIGNAL(timeout()),this,SLOTS(onTimeout()));
+	
+	QTimer还有个静态版本来做一次性的：
+	QTimer::singleShot(1000,this,SLOT(onTimeout()));//直接就开始了
+
